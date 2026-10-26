@@ -145,6 +145,12 @@ def _station_matches_category(station: dict, category: str) -> bool:
     allowed = _sources_for_category(category)
     if not allowed:
         return False
+    # NDBC buoys are served by noaa_weather but belong to the ocean category.
+    if category == "ocean" and any(
+        (m.get("network") or "").upper() == "NDBC"
+        for m in [station.get("primary", {}), *station.get("backups", [])]
+    ):
+        return True
     primary = station.get("primary", {})
     if primary.get("source", "") in allowed:
         return True

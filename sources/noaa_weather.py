@@ -29,6 +29,7 @@ import asyncio
 import io
 import csv
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -339,6 +340,8 @@ def _nws_obs_to_readings(obs_props: dict, station_id: str) -> list[Reading]:
 # NDBC parsers
 # ---------------------------------------------------------------------------
 
+_NDBC_LOCATION_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([NS])\s+(\d+(?:\.\d+)?)\s*([EW])")
+
 _NDBC_MISSING = {"MM", "99.0", "999", "9999", "99999", "999.0", "9999.0", "99999.0"}
 
 
@@ -388,25 +391,35 @@ def _ndbc_station_table_to_stations(text: str) -> list[Station]:
         if not sid:
             continue
 
-        try:
-            lat = float(_col("lat", 3))
-        except (ValueError, TypeError):
-            lat = 0.0
-        try:
-            lon = float(_col("lon", 4))
-        except (ValueError, TypeError):
-            lon = 0.0
+        location = _col("location", 2)
 
-        elev_raw = _col("site_elev", 5)
+        lat: Optional[float] = None
+        lon: Optional[float] = None
+        if "lat" in header and "lon" in header:
+            # Legacy layout: numeric lat/lon columns
+            try:
+                lat = float(_col("lat", 3))
+                lon = float(_col("lon", 4))
+            except (ValueError, TypeError):
+                lat = lon = None
+        else:
+            # Current layout: "43.098 N 87.850 W (...)" in the LOCATION column
+            m = _NDBC_LOCATION_RE.match(location)
+            if m:
+                lat = float(m.group(1)) * (-1 if m.group(2) == "S" else 1)
+                lon = float(m.group(3)) * (-1 if m.group(4) == "W" else 1)
+        if lat is None or lon is None:
+            continue
+
+        elev_raw = _col("site_elev", 5) if "site_elev" in header else ""
         try:
             elevation = float(elev_raw) if elev_raw else None
         except ValueError:
             elevation = None
 
-        buoy_type = _col("type", 1)
-        location = _col("location", 2)
-
-        name = location.title() if location else sid
+        buoy_type = _col("ttype", 2) if "ttype" in header else _col("type", 1)
+        station_name = _col("name", -1) if "name" in header else ""
+        name = station_name or (location.title() if location else sid)
 
         stations.append(
             Station(

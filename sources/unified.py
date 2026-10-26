@@ -280,6 +280,7 @@ def _endpoint_inventory(include_param_sweeps: bool = True) -> list[str]:
         dynamic_endpoints += [f"/api/climate/acis/stations?state={s}" for s in _ALL_STATES]
         dynamic_endpoints += [f"/api/federal_water/usace/locations?office={o}" for o in _USACE_OFFICES]
         dynamic_endpoints.append("/api/noaa_water/nwps/gauges")
+        dynamic_endpoints.append("/api/noaa_weather/ndbc/stations")
 
         # ── Observation / current-data endpoints (provide last_update timestamps) ──
         # IEM current obs — returns stations with timestamps
@@ -1851,6 +1852,8 @@ async def _fetch_readings_for_station(
     Returns a dict with readings list or None on failure.
     """
     template = _SOURCE_READINGS_ENDPOINTS.get(source)
+    if source == "noaa_weather" and (network or "").upper() == "NDBC":
+        template = "/api/noaa_weather/ndbc/stations/{station_id}"
     if not template:
         # Fallback: try the generic pattern /api/{source}/stations/{station_id}/readings
         template = f"/api/{source}/stations/{{station_id}}/readings?hours={{hours}}"
